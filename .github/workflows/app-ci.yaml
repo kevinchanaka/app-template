@@ -1,17 +1,15 @@
 name: App CI
 
-# 1. determine changed files
-# 2. trigger CI for appropriate app (client or server)
-
 on:
   pull_request:
     branches: [ "main" ]
 
 jobs:
-  determine-changed-directories:
+  detect-changes:
+    name: Determine changed directories
     runs-on: ubuntu-latest
     outputs:
-      changed-dirs: ${{ steps.get-changed-directories.outputs.changed-dirs }}
+      changed_dirs: ${{ steps.get-changed-directories.outputs.changed_dirs }}
     steps:
       - name: Checkout PR branch
         uses: actions/checkout@v4
@@ -32,9 +30,86 @@ jobs:
           echo "Detected changed directories: $CHANGED_DIRS_CSV"
           echo "changed_dirs=$CHANGED_DIRS_CSV" >> $GITHUB_OUTPUT
 
+  client-ci:
+    name: Client CI
+    needs: detect-changes
+    if: contains(needs.detect-changes.outputs.changed_dirs, 'client')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: client
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-          
+      - name: Setup NodeJS
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+          cache-dependency-path: 'client/package-lock.json'
 
-      # - uses: actions/setup-node@v4
-      #   with:
-      #     node-version: 22
+      - name: Get npm cache directory
+        id: npm-cache-dir
+        shell: bash
+        run: echo "dir=$(npm config get cache)" >> ${GITHUB_OUTPUT}
+
+      - uses: actions/cache@v4
+        id: npm-cache
+        with:
+          path: ${{ steps.npm-cache-dir.outputs.dir }}
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install packages
+        run: npm clean-install
+
+      - name: Run linting
+        run: echo "Running linting..." # TODO: update
+
+      - name: Run unit tests
+        run: echo "Running unit tests..." # TODO: update
+
+  server-ci:
+    name: Server CI
+    needs: detect-changes
+    if: contains(needs.detect-changes.outputs.changed_dirs, 'server')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: server
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup NodeJS
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+          cache-dependency-path: 'server/package-lock.json'
+
+      - name: Get npm cache directory
+        id: npm-cache-dir
+        shell: bash
+        run: echo "dir=$(npm config get cache)" >> ${GITHUB_OUTPUT}
+
+      - uses: actions/cache@v4
+        id: npm-cache
+        with:
+          path: ${{ steps.npm-cache-dir.outputs.dir }}
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install packages
+        run: npm clean-install
+
+      - name: Run linting
+        run: echo "Running linting..." # TODO: update
+
+      - name: Run unit tests
+        run: echo "Running unit tests..." # TODO: update
