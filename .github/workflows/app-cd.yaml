@@ -1,0 +1,104 @@
+name: App CD
+
+on:
+  pull_request: # change to push when testing is complete
+    branches: [ "main" ]
+
+# 1. create release
+# 2. build and push image to GHCR, using version from release
+
+jobs:
+  detect-changes:
+    name: Determine changed directories
+    runs-on: ubuntu-latest
+    outputs:
+      changed_dirs: ${{ steps.get-changed-directories.outputs.changed_dirs }}
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get list of changed root directories
+        id: get-changed-directories
+        run: |
+          CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
+
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+
+          CHANGED_DIRS=$(echo "$CHANGED_FILES" | cut -d/ -f1 | sort -u)
+          CHANGED_DIRS_CSV=$(echo "$CHANGED_DIRS" | tr '\n' ',' | sed 's/,$//')
+
+          echo "Detected changed directories: $CHANGED_DIRS_CSV"
+          echo "changed_dirs=$CHANGED_DIRS_CSV" >> $GITHUB_OUTPUT
+
+  # Docs: 
+  # https://github.com/semantic-release/semantic-release/blob/master/docs/recipes/ci-configurations/github-actions.md
+  # https://github.com/semantic-release/semantic-release/issues/753#issuecomment-2275984612
+  server-get-version:
+    name: Get next version of server
+    needs: detect-changes
+    if: contains(needs.detect-changes.outputs.changed_dirs, 'server')
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.semantic-release-dryrun.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+      - name: Install `@semantic-release/exec` plugin
+        run: npm install @semantic-release/exec
+      - name: Semantic Release dry-run
+        id: semantic-release-dryrun
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx semantic-release --extends .github/release/.releaserc.server.json --dry-run
+      - name: Version
+        run: echo "The next version is ${{ steps.semantic-release.outputs.version }}"
+
+  server-build:
+    name: Server Build
+    needs: server-get-version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Server Docker Build
+        run: | 
+          docker build -t server .
+          docker tag server:latest ghcr.io/kevinchanaka/app-template-server:${{ needs.server-get-version.outputs.version }}
+          docker push ghcr.io/kevinchanaka/app-template-server:${{ needs.server-get-version.outputs.version }}
+
+  server-release:
+    name: Server Release
+    needs: server-build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+      - name: Install `@semantic-release/exec` plugin
+        run: npm install @semantic-release/exec
+      - name: Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx semantic-release --extends .github/release/.releaserc.server.json
+
