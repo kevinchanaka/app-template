@@ -44,7 +44,7 @@ jobs:
     outputs:
       version: ${{ steps.semantic-release-dryrun.outputs.version }}
     steps:
-      - name: Checkout
+      - name: Checkout PR branch
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -58,7 +58,7 @@ jobs:
         id: semantic-release-dryrun
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx semantic-release --extends .github/release/.releaserc.server.json --dry-run
+        run: pwd && ls -la .github/* && npx semantic-release --extends .github/release/.releaserc.server.json --dry-run
       - name: Version
         run: echo "The next version is ${{ steps.semantic-release.outputs.version }}"
 
